@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Frame Studio – AI photo and video generator</title>
+<style>
+:root{--bg:#e9edf5;--sf:#fff;--ink:#14213d;--mu:#5d6785;--ln:#d5dbe8;--sg:#3a5bff;--on:#fff;--ch:#f1f4fa;--er:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1224;--sf:#171e38;--ink:#eef1fb;--mu:#9aa4c4;--ln:#2a3459;--sg:#7d93ff;--on:#0d1224;--ch:#202949;--er:#ffb4ab}}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center;min-height:100vh}
+.app{width:100%;max-width:560px;background:var(--sf);min-height:100vh;display:flex;flex-direction:column}
+header{padding:18px 20px 6px;display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:15px;font-weight:700;margin:18px 0 8px}
+main{flex:1;padding:6px 20px 90px}
+.mu{color:var(--mu);font-size:13px}.note{color:var(--mu);font-size:13px;margin-top:8px}
+.err{color:var(--er);font-size:14px;margin-top:12px;white-space:pre-wrap}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--ch);border-radius:14px;padding:4px}
+.seg button{border:0;background:none;color:var(--mu);font:600 15px inherit;padding:10px;border-radius:11px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--sf);color:var(--ink);box-shadow:0 1px 3px rgba(20,33,61,.2)}
+textarea,input{width:100%;border:1.5px solid var(--ln);background:var(--sf);color:var(--ink);border-radius:14px;padding:12px;font:inherit;margin-top:10px}
+textarea{min-height:90px;resize:vertical}
+textarea:focus,input:focus,button:focus-visible{outline:2px solid var(--sg);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid transparent;background:var(--ch);color:var(--ink);font:500 14px inherit;padding:8px 14px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed=true]{border-color:var(--sg);background:var(--sf);color:var(--sg)}
+.go{width:100%;margin-top:22px;border:0;border-radius:16px;padding:16px;background:var(--sg);color:var(--on);font:700 17px inherit;cursor:pointer}
+.go[disabled]{opacity:.6;cursor:progress}
+details{margin-top:6px;border:1.5px solid var(--ln);border-radius:14px;padding:10px 12px}
+summary{cursor:pointer;font-weight:600}
+.out{margin-top:20px}
+.out video,.out img{width:100%;border-radius:16px;background:#000;display:block}
+.bar{height:6px;background:var(--ln);border-radius:3px;overflow:hidden;margin-top:12px}.bar i{display:block;height:100%;width:0;background:var(--sg);transition:width .3s}
+.clips a{display:inline-block;margin:6px 10px 0 0;color:var(--sg);font-size:14px}
+.card{display:flex;gap:12px;align-items:center;padding:12px;border:1.5px solid var(--ln);border-radius:16px;margin-top:10px}
+.card div{flex:1;min-width:0}.card p{font-size:13px;color:var(--mu)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.grid video,.grid img{width:100%;border-radius:14px;background:#000}
+nav{position:fixed;bottom:0;width:100%;max-width:560px;display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--sf);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{border:0;background:none;color:var(--mu);font:600 14px inherit;padding:14px;cursor:pointer}
+nav button[aria-selected=true]{color:var(--sg)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>Frame Studio</h1><span class="mu">Real AI generation</span></header>
+
+<main id="p-create">
+  <details id="cfgBox" open>
+    <summary>Gemini API key and models</summary>
+    <input id="key" type="password" placeholder="Paste your Gemini API key" autocomplete="off" aria-label="Gemini API key">
+    <p class="note">Get a key at aistudio.google.com/apikey. It is saved only in this browser and sent only to Google. Video generation usually needs billing enabled on your Google account.</p>
+    <input id="mVeo" aria-label="Video model"><input id="mImg" aria-label="Image model"><input id="mTxt" aria-label="Story planner model">
+    <p class="note">Model names above (video, photo, story planner) can be changed if Google renames them.</p>
+  </details>
+
+  <div class="seg" style="margin-top:14px"><button id="bPhoto" aria-pressed="true">Photo</button><button id="bVideo" aria-pressed="false">Video</button></div>
+  <textarea id="prompt" placeholder="Describe the scene, action or story. Example: a fishing boat leaves the Odisha coast at sunrise, waves, seagulls, slow camera push-in" aria-label="Prompt"></textarea>
+
+  <h2>Use saved characters</h2>
+  <div class="row" id="chars"></div>
+  <h2>Style</h2><div class="row" id="styles"></div>
+  <h2>Shape</h2><div class="row" id="shapes"></div>
+
+  <div id="vOnly" class="hide">
+    <h2>Length</h2><div class="row" id="lens"></div>
+    <p class="note" id="lenNote"></p>
+    <h2>Script with dialogue (optional)</h2>
+    <textarea id="script" style="min-height:130px;margin-top:0" placeholder="One line per moment. Use Name: words for dialogue.&#10;&#10;Asha walks into the market at sunrise.&#10;Asha: Good morning, welcome to Odisha.&#10;Ravi: Thank you, it is beautiful here." aria-label="Script"></textarea>
+    <p class="note" id="scNote"></p>
+  </div>
+
+  <button class="go" id="go">Generate photo</button>
+  <p class="err" id="err" role="alert"></p>
+  <div class="out" id="out"></div>
+</main>
+
+<main id="p-chars" class="hide">
+  <h2 style="margin-top:8px">New character</h2>
+  <input id="cName" placeholder="Name, e.g. Asha" maxlength="30" aria-label="Character name">
+  <textarea id="cDesc" placeholder="Look and clothing, e.g. 25-year-old woman, short black hair, yellow raincoat, round glasses" aria-label="Character description"></textarea>
+  <button class="go" id="cSave">Save character</button>
+  <p class="note" id="cMsg" role="status"></p>
+  <h2>Saved characters</h2>
+  <p class="mu" id="cEmpty">No characters yet. Save one to reuse it in any video.</p>
+  <div id="cList"></div>
+</main>
+
+<main id="p-gal" class="hide">
+  <p class="mu" id="gEmpty" style="margin-top:20px">Nothing saved yet. Generate something and tap Save. Saved items stay until you close this page, so download anything you want to keep.</p>
+  <div class="grid" id="grid"></div>
+</main>
+
+<nav role="tablist">
+  <button role="tab" id="tCreate" aria-selected="true">Create</button>
+  <button role="tab" id="tChars" aria-selected="false">Characters</button>
+  <button role="tab" id="tGal" aria-selected="false">Gallery</button>
+</nav>
+</div>
+
+<script>
+var $=function(i){return document.getElementById(i)};
+var BASE="https://generativelanguage.googleapis.com/v1beta";
+var STYLES={"Cinematic":"Cinematic film look, shallow depth of field, natural lighting.","Watercolor":"Hand-painted watercolor animation style.","Product shot":"Clean studio commercial look.","Anime":"High-quality anime animation style.","Film grain":"Vintage 35mm film grain look."};
+var LENS=[["8s",8],["16s",16],["32s",32],["1 min",60],["2 min",120],["5 min",300]];
+var S={mode:"photo",style:"Cinematic",shape:"16:9",len:16,picked:[],chars:[],gal:[]};
+var cfg={key:"",veo:"veo-3.1-generate-preview",img:"gemini-2.5-flash-image",txt:"gemini-2.5-flash"};
+try{var c0=JSON.parse(localStorage.getItem("frame2:cfg")||"null");if(c0)Object.keys(c0).forEach(function(k){if(c0[k])cfg[k]=c0[k]});
+var d0=JSON.parse(localStorage.getItem("frame2:chars")||"null");if(d0)S.chars=d0}catch(e){}
+function saveCfg(){cfg.key=$("key").value.trim();cfg.veo=$("mVeo").value.trim();cfg.img=$("mImg").value.trim();cfg.txt=$("mTxt").value.trim();try{localStorage.setItem("frame2:cfg",JSON.stringify(cfg))}catch(e){}}
+function saveChars(){try{localStorage.setItem("frame2:chars",JSON.stringify(S.chars))}catch(e){}}
+["key","mVeo","mImg","mTxt"].forEach(function(i){$(i).oninput=saveCfg});
+$("key").value=cfg.key;$("mVeo").value=cfg.veo;$("mImg").value=cfg.img;$("mTxt").value=cfg.txt;
+if(cfg.key)$("cfgBox").open=false;
+
+function chips(el,items,get,on,click){el.innerHTML="";items.forEach(function(it){var b=document.createElement("button");b.className="chip";b.textContent=it[0];b.setAttribute("aria-pressed",on(it));b.onclick=function(){click(it);render()};el.appendChild(b)})}
+
+function scriptScenes(){
+  var t=$("script").value.trim();if(S.mode!=="video"||!t)return null;
+  var out=[],c={lines:[],secs:0};
+  t.split("\n").map(function(l){return l.trim()}).filter(Boolean).forEach(function(l){
+    var m=l.match(/^([^:]{1,30}):\s*(.+)$/);
+    var it=m?{speaker:m[1].trim(),text:m[2].trim(),secs:Math.max(2,Math.ceil(m[2].split(/\s+/).length/2.5))}:{text:l,secs:3};
+    if(c.secs+it.secs>8&&c.lines.length){out.push(c);c={lines:[],secs:0}}
+    c.lines.push(it);c.secs+=it.secs;
+  });
+  if(c.lines.length)out.push(c);
+  return out.slice(0,38);
+}
+function clipCount(){var sc=scriptScenes();return sc?sc.length:Math.ceil(S.len/8)}
+function speakers(){var o=[];(scriptScenes()||[]).forEach(function(sc){sc.lines.forEach(function(l){if(l.speaker&&o.indexOf(l.speaker.toLowerCase())<0)o.push(l.speaker.toLowerCase())})});return o}
+function used(){var sp=speakers();return S.chars.filter(function(c){return S.picked.indexOf(c.id)>-1||sp.indexOf(c.name.toLowerCase())>-1})}
+function cast(){var u=used();return u.length?"Characters: "+u.map(function(c){return c.name+", "+c.desc}).join("; ")+". Keep each character looking identical in every shot.":""}
+
+function render(){
+  var v=S.mode==="video";
+  $("bPhoto").setAttribute("aria-pressed",!v);$("bVideo").setAttribute("aria-pressed",v);
+  $("vOnly").classList.toggle("hide",!v);
+  $("go").textContent=v?"Generate video":"Generate photo";
+  var shapes=v?["16:9","9:16"]:["16:9","9:16","1:1"];if(shapes.indexOf(S.shape)<0)S.shape="16:9";
+  chips($("shapes"),shapes.map(function(x){return [x]}),0,function(it){return S.shape===it[0]},function(it){S.shape=it[0]});
+  chips($("styles"),Object.keys(STYLES).map(function(x){return [x]}),0,function(it){return S.style===it[0]},function(it){S.style=it[0]});
+  chips($("lens"),LENS,0,function(it){return S.len===it[1]},function(it){S.len=it[1]});
+  var cs=S.chars.map(function(c){return [c.name,c.id]});cs.push([S.chars.length?"+ New":"+ Create a character","new"]);
+  chips($("chars"),cs,0,function(it){return S.picked.indexOf(it[1])>-1},function(it){if(it[1]==="new"){tab("chars");return}var i=S.picked.indexOf(it[1]);if(i>-1)S.picked.splice(i,1);else S.picked.push(it[1])});
+  var sc=scriptScenes(),n=clipCount();
+  $("lenNote").textContent=sc?"Length is set by your script.":"Each clip is 8 seconds, so this makes "+n+" clip"+(n>1?"s":"")+". Every clip is a separate paid request.";
+  var un=speakers().filter(function(x){return !S.chars.some(function(c){return c.name.toLowerCase()===x})});
+  $("scNote").textContent=(sc?"Your script makes "+n+" clip"+(n>1?"s":"")+" (about "+n*8+" seconds). ":"Lines like Name: words are spoken by that character, and the voice comes with the video. ")+(un.length?un.join(", ")+" "+(un.length>1?"are":"is")+" not saved as a character yet. Save one with the same name to keep the same look.":"");
+}
+$("script").oninput=render;
+$("bPhoto").onclick=function(){S.mode="photo";render()};$("bVideo").onclick=function(){S.mode="video";render()};
+
+function tab(n){["create","chars","gal"].forEach(function(k){$("p-"+k).classList.toggle("hide",k!==n);$({create:"tCreate",chars:"tChars",gal:"tGal"}[k]).setAttribute("aria-selected",k===n)})}
+$("tCreate").onclick=function(){tab("create")};$("tChars").onclick=function(){tab("chars")};$("tGal").onclick=function(){tab("gal")};
+
+function drawChars(){
+  var l=$("cList");l.innerHTML="";$("cEmpty").classList.toggle("hide",S.chars.length>0);
+  S.chars.forEach(function(c){
+    var d=document.createElement("div");d.className="card";
+    var i=document.createElement("div"),b=document.createElement("b"),p=document.createElement("p");b.textContent=c.name;p.textContent=c.desc;i.appendChild(b);i.appendChild(p);
+    var x=document.createElement("button");x.className="chip";x.textContent="Delete";
+    x.onclick=function(){S.chars=S.chars.filter(function(y){return y.id!==c.id});S.picked=S.picked.filter(function(y){return y!==c.id});saveChars();drawChars();render()};
+    d.appendChild(i);d.appendChild(x);l.appendChild(d);
+  });
+}
+$("cSave").onclick=function(){
+  var n=$("cName").value.trim(),d=$("cDesc").value.trim();
+  if(!n||!d){$("cMsg").textContent="Add a name and a description to save this character.";return}
+  S.chars.push({id:"c"+Date.now(),name:n,desc:d});saveChars();
+  $("cName").value="";$("cDesc").value="";$("cMsg").textContent=n+" saved. Select it on the Create tab.";drawChars();render();
+};
+
+function H(){return {"Content-Type":"application/json","x-goog-api-key":cfg.key}}
+function errMsg(j,r){var m=(j&&j.error&&j.error.message)||("Request failed ("+r.status+")");if(r.status===400||r.status===403||r.status===404||r.status===429)m+="\nCheck your API key, the model name, and that billing or quota is enabled for this model.";return m}
+var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+
+async function genPhoto(){
+  var p=STYLES[S.style]+" "+cast()+" "+$("prompt").value.trim()+" Aspect ratio "+S.shape+".";
+  var r=await fetch(BASE+"/models/"+cfg.img+":generateContent",{method:"POST",headers:H(),body:JSON.stringify({contents:[{parts:[{text:p}]}]})});
+  var j=await r.json();if(!r.ok)throw new Error(errMsg(j,r));
+  var parts=(j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[];
+  var pi=parts.filter(function(x){return x.inlineData})[0];
+  if(!pi)throw new Error("The model returned no image. Try a different description.");
+  return "data:"+(pi.inlineData.mimeType||"image/png")+";base64,"+pi.inlineData.data;
+}
+
+async function planScenes(n){
+  var base=$("prompt").value.trim();if(n===1)return [base];
+  var fb=function(a){a=a||[];while(a.length<n)a.push(base+" (part "+(a.length+1)+" of "+n+", continuing the same story)");return a.slice(0,n)};
+  try{
+    var r=await fetch(BASE+"/models/"+cfg.txt+":generateContent",{method:"POST",headers:H(),body:JSON.stringify({contents:[{parts:[{text:"Split this story into "+n+" consecutive scenes for 8-second AI video clips. Return ONLY a JSON array of "+n+" strings. Each string describes the setting, lighting, camera movement and character actions of one scene, continuing the story. Story: "+base+" "+cast()}]}]})});
+    var j=await r.json();var a=JSON.parse(j.candidates[0].content.parts[0].text.replace(/```json|```/g,"").trim());
+    return fb(a.map(String));
+  }catch(e){return fb([])}
+}
+
+async function veo(prompt,img){
+  var body={instances:[{prompt:prompt}],parameters:{aspectRatio:S.shape}};
+  if(img)body.instances[0].image={bytesBase64Encoded:img,mimeType:"image/jpeg"};
+  var r=await fetch(BASE+"/models/"+cfg.veo+":predictLongRunning",{method:"POST",headers:H(),body:JSON.stringify(body)});
+  var j=await r.json();if(!r.ok)throw new Error(errMsg(j,r));
+  var name=j.name;
+  for(var k=0;k<90;k++){
+    await sleep(8000);
+    var s=await (await fetch(BASE+"/"+name,{headers:H()})).json();
+    if(s.error)throw new Error(s.error.message||"Video generation failed.");
+    if(s.done){
+      var g=s.response&&s.response.generateVideoResponse,sm=g&&g.generatedSamples&&g.generatedSamples[0];
+      if(!sm)throw new Error("No video was returned."+(g&&g.raiMediaFilteredReasons?" Reason: "+g.raiMediaFilteredReasons.join(" "):" The prompt may have been blocked by safety filters."));
+      var d=await fetch(sm.video.uri,{headers:{"x-goog-api-key":cfg.key}});
+      if(!d.ok)throw new Error("The video was made but could not be downloaded ("+d.status+").");
+      return URL.createObjectURL(await d.blob());
+    }
+  }
+  throw new Error("Timed out waiting for the video. Try again.");
+}
+
+function lastFrame(url){return new Promise(function(res){
+  var v=document.createElement("video");v.muted=true;v.playsInline=true;v.src=url;
+  v.onloadedmetadata=function(){v.currentTime=Math.max(0,v.duration-0.1)};
+  v.onseeked=function(){try{var c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);res(c.toDataURL("image/jpeg",0.85).split(",")[1])}catch(e){res(null)}};
+  v.onerror=function(){res(null)};setTimeout(function(){res(null)},8000);
+})}
+
+function status(t,pct){$("out").innerHTML="";var p=document.createElement("p");p.className="mu";p.textContent=t;var b=document.createElement("div");b.className="bar";var i=document.createElement("i");i.style.width=Math.round(pct*100)+"%";b.appendChild(i);$("out").appendChild(p);$("out").appendChild(b)}
+
+function showVideo(urls,final){
+  var o=$("out");o.innerHTML="";
+  var v=document.createElement("video");v.controls=true;v.playsInline=true;v.src=urls[0];var idx=0;
+  v.onended=function(){if(idx<urls.length-1){idx++;v.src=urls[idx];v.play()}};o.appendChild(v);
+  var cl=document.createElement("div");cl.className="clips";
+  urls.forEach(function(u,i){var a=document.createElement("a");a.href=u;a.download="frame-clip-"+(i+1)+".mp4";a.textContent="Download clip "+(i+1);cl.appendChild(a)});
+  o.appendChild(cl);
+  var n=document.createElement("p");n.className="note";n.textContent=urls.length>1?"Clips play one after another. Download each clip to keep it.":"Download the clip to keep it.";o.appendChild(n);
+  if(final){var s=document.createElement("button");s.className="chip";s.style.marginTop="10px";s.textContent="Save to gallery";s.onclick=function(){S.gal.unshift({type:"video",urls:urls});drawGal();s.textContent="Saved";s.disabled=true};o.appendChild(s)}
+}
+function drawGal(){
+  var g=$("grid");g.innerHTML="";$("gEmpty").classList.toggle("hide",S.gal.length>0);
+  S.gal.forEach(function(it){var el;if(it.type==="photo"){el=document.createElement("img");el.src=it.url;el.alt="Saved photo"}else{el=document.createElement("video");el.src=it.urls[0];el.controls=true;el.playsInline=true}g.appendChild(el)});
+}
+
+$("go").onclick=async function(){
+  var e=$("err");e.textContent="";saveCfg();
+  var sc=scriptScenes();
+  if(!cfg.key){e.textContent="Paste your Gemini API key first (open the key section above).";$("cfgBox").open=true;return}
+  if(!$("prompt").value.trim()&&!sc){e.textContent="Add a description first so Frame knows what to make.";return}
+  $("go").disabled=true;
+  try{
+    if(S.mode==="photo"){
+      status("Generating your photo…",0.4);
+      var u=await genPhoto();var o=$("out");o.innerHTML="";var im=document.createElement("img");im.src=u;im.alt="Generated photo";o.appendChild(im);
+      var a=document.createElement("a");a.href=u;a.download="frame-photo.png";a.textContent="Download photo";a.className="clips";a.style.display="block";o.appendChild(a);
+      var sv=document.createElement("button");sv.className="chip";sv.style.marginTop="10px";sv.textContent="Save to gallery";sv.onclick=function(){S.gal.unshift({type:"photo",url:u});drawGal();sv.textContent="Saved";sv.disabled=true};o.appendChild(sv);
+    }else{
+      var n=clipCount();
+      if(n>8&&!confirm("This will make "+n+" separate paid video requests. Continue?")){$("go").disabled=false;return}
+      status("Planning your scenes…",0.02);
+      var prompts=sc?sc.map(function(c){return c.lines.map(function(l){return l.speaker?l.speaker+' says: "'+l.text+'"':l.text}).join(" ")}):await planScenes(n);
+      var urls=[],img=null;
+      for(var i=0;i<prompts.length;i++){
+        status("Clip "+(i+1)+" of "+prompts.length+": generating. Each clip takes a few minutes.",i/prompts.length);
+        var full=STYLES[S.style]+" "+cast()+" Scene: "+prompts[i];
+        var url;try{url=await veo(full,img)}catch(x){if(img){url=await veo(full,null)}else throw x}
+        urls.push(url);
+        if(i<prompts.length-1)img=await lastFrame(url);
+      }
+      showVideo(urls,true);
+    }
+  }catch(x){
+    e.textContent="Generation failed: "+x.message;
+    if(String(x.message).indexOf("Failed to fetch")>-1)e.textContent+="\nThe browser could not reach Google. Check your internet connection and that the page was opened in Chrome or Safari.";
+  }
+  $("go").disabled=false;
+};
+
+drawChars();drawGal();render();
+</script>
+</body>
+</html>
